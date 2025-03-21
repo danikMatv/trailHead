@@ -3,17 +3,25 @@ public with sharing class InvocableLeadConvert {
     @InvocableMethod(label='Convert Leads')
     public static List<ConvertLeadResult> convertLeads(List<ConvertLeadRequest> requests) {
         List<ConvertLeadResult> results = new List<ConvertLeadResult>();
+        Set<Id> leadIds = new Set<Id>();
         for (ConvertLeadRequest request : requests) {
-            results.add(convertLead(request));
+            if(request.accountId != null){
+                leadIds.add(request.accountId);
+            }
+        }
+        Map<Id,Account> accounts = new Map<Id,Account> ([SELECT Id,isPersonAccount FROM Account WHERE Id IN :leadIds]);
+        for (ConvertLeadRequest request : requests) {
+            results.add(convertLead(request,accounts));
         }
         return results;
     }
     
-    public static ConvertLeadResult convertLead(ConvertLeadRequest request) {
+    public static ConvertLeadResult convertLead(ConvertLeadRequest request, Map<Id,Account> accounts) {
         Database.LeadConvert lc = new Database.LeadConvert();
         lc.setLeadId(request.leadId);
         lc.setConvertedStatus(request.convertedStatus);
         
+
         if (request.accountId != null) {
             lc.setAccountId(request.accountId);
         }
@@ -49,14 +57,14 @@ public with sharing class InvocableLeadConvert {
         Database.LeadConvertResult lcr = Database.convertLead(lc, true);
         if (lcr.isSuccess()) {
 
-            if (request.accountId == null && lcr.getAccountId() != null) {
+            if (request.accountId == null) {
                 Account acc = new Account(Id = lcr.getAccountId());
                 if (Schema.sObjectType.Account.fields.RecordTypeId.isUpdateable()) {
                     acc.RecordTypeId = request.recordTypeId;
                     update acc;
                 }
             }
-            else if(request.contactId == null && lcr.contactId != null){
+            else if(request.contactId == null && !accounts.get(request.accountId).isPersonAccount){
                 Contact con = new Contact(Id = lcr.getContactId());
                 if (Schema.sObjectType.Contact.fields.RecordTypeId.isUpdateable()) {
                     con.RecordTypeId = request.recordTypeId;
